@@ -51,14 +51,45 @@ if uploaded_files and st.sidebar.button("Process PDFs"):
             st.session_state.all_documents.extend(docs)
             os.remove(tmp_path)
         
+        # Dynamic chunking based on document size
+        total_pages = len(st.session_state.all_documents)
+        if total_pages < 30:
+            c_size, c_overlap = 800, 100
+        elif total_pages < 200:
+            c_size, c_overlap = 1500, 200
+        else:
+            c_size, c_overlap = 3000, 400
+            
+        st.sidebar.info(f"Auto-adjusted chunk size to {c_size} (Total pages: {total_pages})")
+        
         # Split documents
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=c_size, chunk_overlap=c_overlap)
         chunks = text_splitter.split_documents(st.session_state.all_documents)
         
         # Create Embeddings and Vectorstore
         embeddings = CohereEmbeddings(model="embed-v4.0", cohere_api_key=cohere_api_key)
-        st.session_state.vectorstore = Chroma.from_documents(chunks, embeddings)
-        st.sidebar.success(f"Processed {len(uploaded_files)} files into {len(chunks)} chunks.")
+        st.session_state.vectorstore = Chroma(embedding_function=embeddings)
+        
+        # Batching to bypass API limits
+        batch_size = 80
+        import time
+        
+        progress_text = "Embedding chunks... Please wait."
+        my_bar = st.sidebar.progress(0, text=progress_text)
+        
+        for i in range(0, len(chunks), batch_size):
+            batch = chunks[i : i + batch_size]
+            st.session_state.vectorstore.add_documents(batch)
+            
+            # Update Progress
+            progress = min((i + len(batch)) / len(chunks), 1.0)
+            my_bar.progress(progress, text=f"Embedding {i + len(batch)}/{len(chunks)} chunks...")
+            
+            if i + batch_size < len(chunks):
+                time.sleep(7) # Sleep to avoid TooManyRequestsError (Cohere Trial Limit)
+                
+        my_bar.empty()
+        st.sidebar.success(f"Processed {len(uploaded_files)} files into {len(chunks)} chunks successfully!")
 
 st.sidebar.header("Retrieval Settings")
 available_pdfs = list(set([doc.metadata.get('source') for doc in st.session_state.all_documents])) if st.session_state.all_documents else []
