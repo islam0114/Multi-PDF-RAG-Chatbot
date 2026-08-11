@@ -7,3 +7,5 @@ streamlit
 pypdf
 chromadb
 sentence-transformers
+torch
+torchvision
