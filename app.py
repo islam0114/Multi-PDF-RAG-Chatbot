@@ -14,73 +14,66 @@ st.set_page_config(page_title="Multi-PDF RAG Chatbot", layout="wide")
 st.title("Multi-PDF RAG Chatbot")
 
 # Retrieve Cohere API Key
-# Retrieve Cohere API Key
-cohere_api_key = st.sidebar.text_input("Enter Cohere API Key", type="password")
-st.sidebar.markdown("💡 **Tip:** Get your free API key from [Cohere's Dashboard](https://dashboard.cohere.com/api-keys).")
+with st.expander("⚙️ Configuration & Document Upload", expanded=not st.session_state.vectorstore):
+    cohere_api_key = st.text_input("Enter Cohere API Key", type="password")
+    st.markdown("💡 **Tip:** Get your free API key from [Cohere's Dashboard](https://dashboard.cohere.com/api-keys).")
 
-if not cohere_api_key:
-    st.info("Please enter your Cohere API key to proceed.")
-    st.stop()
+    if not cohere_api_key:
+        st.warning("⚠️ Please enter your Cohere API key above to unlock the chatbot.")
+        st.stop()
 
-# Initialize session state
-if 'chat_history' not in st.session_state:
-    st.session_state.chat_history = []
-if 'all_documents' not in st.session_state:
-    st.session_state.all_documents = []
-if 'vectorstore' not in st.session_state:
-    st.session_state.vectorstore = None
+    st.markdown("---")
+    uploaded_files = st.file_uploader("Upload PDFs", type="pdf", accept_multiple_files=True)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        k_val = st.slider("Retriever 'k' (Number of chunks)", min_value=1, max_value=20, value=5)
+    with col2:
+        st.markdown("<br>", unsafe_allow_html=True) # spacing
+        use_rerank = st.checkbox("Use Cohere Rerank (Hybrid-like retrieval)", value=True)
 
-# Sidebar controls
-st.sidebar.header("Document Processing")
-uploaded_files = st.sidebar.file_uploader("Upload PDFs", type="pdf", accept_multiple_files=True)
-
-if uploaded_files and st.sidebar.button("Process PDFs"):
-    with st.spinner("Processing documents..."):
-        st.session_state.all_documents = []
-        for file in uploaded_files:
-            # Save to temporary file
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-                tmp.write(file.getvalue())
-                tmp_path = tmp.name
-            
-            loader = PyPDFLoader(tmp_path)
-            docs = loader.load()
-            # Restore original filename in metadata
-            for d in docs:
-                d.metadata["source"] = file.name
-            
-            st.session_state.all_documents.extend(docs)
-            os.remove(tmp_path)
-        
-        # Dynamic chunking based on document size
-        total_pages = len(st.session_state.all_documents)
-        if total_pages < 30:
-            c_size, c_overlap = 800, 100
-        elif total_pages < 200:
-            c_size, c_overlap = 1500, 200
-        else:
-            c_size, c_overlap = 3000, 400
-            
-        st.sidebar.info(f"Auto-adjusted chunk size to {c_size} (Total pages: {total_pages})")
-        
-        # Split documents
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=c_size, chunk_overlap=c_overlap)
-        chunks = text_splitter.split_documents(st.session_state.all_documents)
-        
-        # Create Embeddings and Vectorstore (Using Local HuggingFace)
-        embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-        
-        with st.spinner("Embedding documents locally (No API limits!)..."):
-            st.session_state.vectorstore = Chroma.from_documents(chunks, embeddings)
+    if uploaded_files and st.button("🚀 Process PDFs", use_container_width=True):
+        with st.spinner("Processing documents..."):
+            st.session_state.all_documents = []
+            for file in uploaded_files:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+                    tmp.write(file.getvalue())
+                    tmp_path = tmp.name
                 
-        st.sidebar.success(f"Processed {len(uploaded_files)} files into {len(chunks)} chunks successfully!")
+                loader = PyPDFLoader(tmp_path)
+                docs = loader.load()
+                for d in docs:
+                    d.metadata["source"] = file.name
+                
+                st.session_state.all_documents.extend(docs)
+                os.remove(tmp_path)
+            
+            total_pages = len(st.session_state.all_documents)
+            if total_pages < 30:
+                c_size, c_overlap = 800, 100
+            elif total_pages < 200:
+                c_size, c_overlap = 1500, 200
+            else:
+                c_size, c_overlap = 3000, 400
+                
+            st.info(f"Auto-adjusted chunk size to {c_size} (Total pages: {total_pages})")
+            
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size=c_size, chunk_overlap=c_overlap)
+            chunks = text_splitter.split_documents(st.session_state.all_documents)
+            
+            embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+            
+            with st.spinner("Embedding documents locally (No API limits!)..."):
+                st.session_state.vectorstore = Chroma.from_documents(chunks, embeddings)
+                    
+            st.success(f"✅ Processed {len(uploaded_files)} files into {len(chunks)} chunks successfully!")
 
-st.sidebar.header("Retrieval Settings")
-available_pdfs = list(set([doc.metadata.get('source') for doc in st.session_state.all_documents])) if st.session_state.all_documents else []
-selected_pdfs = st.sidebar.multiselect("Select PDFs to search", options=available_pdfs, default=available_pdfs)
-
-k_val = st.sidebar.slider("Retriever 'k' (Number of chunks)", min_value=1, max_value=20, value=5)
-use_rerank = st.sidebar.checkbox("Use Cohere Rerank (Hybrid-like retrieval)", value=True)
+# Filtering Section
+if st.session_state.all_documents:
+    available_pdfs = list(set([doc.metadata.get('source') for doc in st.session_state.all_documents]))
+    selected_pdfs = st.multiselect("📑 Select PDFs to search in:", options=available_pdfs, default=available_pdfs)
+else:
+    selected_pdfs = []
 
 # Main Chat Interface
 for msg in st.session_state.chat_history:
