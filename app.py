@@ -103,7 +103,7 @@ if user_query:
                 llm = ChatCohere(model="command-a-03-2025", temperature=0, cohere_api_key=cohere_api_key)
                 
                 qa_prompt = ChatPromptTemplate.from_messages([
-                    ("system", "Answer the user's question using ONLY the context below. If you don't know, say 'I don't know.'\n\nContext:\n{context}"),
+                    ("system", "Answer the user's question using ONLY the context below. Please answer in the same language as the user's question. If you don't know, say 'I don't know.'\n\nContext:\n{context}"),
                     MessagesPlaceholder("chat_history"),
                     ("human", "{input}"),
                 ])
