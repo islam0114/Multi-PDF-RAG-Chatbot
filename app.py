@@ -13,6 +13,14 @@ from langchain_core.messages import HumanMessage, AIMessage
 st.set_page_config(page_title="Multi-PDF RAG Chatbot", layout="wide")
 st.title("Multi-PDF RAG Chatbot")
 
+# Initialize session state
+if 'chat_history' not in st.session_state:
+    st.session_state.chat_history = []
+if 'all_documents' not in st.session_state:
+    st.session_state.all_documents = []
+if 'vectorstore' not in st.session_state:
+    st.session_state.vectorstore = None
+
 # Retrieve Cohere API Key
 with st.expander("⚙️ Configuration & Document Upload", expanded=not st.session_state.vectorstore):
     cohere_api_key = st.text_input("Enter Cohere API Key", type="password")
