@@ -3,7 +3,8 @@ import os
 import tempfile
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_cohere import CohereEmbeddings, ChatCohere, CohereRerank
+from langchain_cohere import ChatCohere, CohereRerank
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -66,29 +67,12 @@ if uploaded_files and st.sidebar.button("Process PDFs"):
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=c_size, chunk_overlap=c_overlap)
         chunks = text_splitter.split_documents(st.session_state.all_documents)
         
-        # Create Embeddings and Vectorstore
-        embeddings = CohereEmbeddings(model="embed-v4.0", cohere_api_key=cohere_api_key)
-        st.session_state.vectorstore = Chroma(embedding_function=embeddings)
+        # Create Embeddings and Vectorstore (Using Local HuggingFace)
+        embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         
-        # Batching to bypass API limits
-        batch_size = 80
-        import time
-        
-        progress_text = "Embedding chunks... Please wait."
-        my_bar = st.sidebar.progress(0, text=progress_text)
-        
-        for i in range(0, len(chunks), batch_size):
-            batch = chunks[i : i + batch_size]
-            st.session_state.vectorstore.add_documents(batch)
-            
-            # Update Progress
-            progress = min((i + len(batch)) / len(chunks), 1.0)
-            my_bar.progress(progress, text=f"Embedding {i + len(batch)}/{len(chunks)} chunks...")
-            
-            if i + batch_size < len(chunks):
-                time.sleep(7) # Sleep to avoid TooManyRequestsError (Cohere Trial Limit)
+        with st.spinner("Embedding documents locally (No API limits!)..."):
+            st.session_state.vectorstore = Chroma.from_documents(chunks, embeddings)
                 
-        my_bar.empty()
         st.sidebar.success(f"Processed {len(uploaded_files)} files into {len(chunks)} chunks successfully!")
 
 st.sidebar.header("Retrieval Settings")
